@@ -19,7 +19,7 @@ import (
 func EphemeralPort() (int, error) {
 	const proto = "tcp"
 
-	addr, err := net.ResolveTCPAddr(proto, ":0")
+	addr, err := net.ResolveTCPAddr(proto, "127.0.0.1:0")
 	if err != nil {
 		return 0, err
 	}

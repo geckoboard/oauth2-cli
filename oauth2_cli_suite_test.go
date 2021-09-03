@@ -12,7 +12,7 @@ var cmdPath string
 
 var _ = BeforeSuite(func() {
 	var err error
-	cmdPath, err = gexec.Build("github.com/dcarley/oauth2-cli")
+	cmdPath, err = gexec.Build("github.com/geckoboard/oauth2-cli")
 	Expect(err).ToNot(HaveOccurred())
 })
 

@@ -33,7 +33,9 @@ func randString() string {
 
 func main() {
 	var (
+		iface        = flag.String("interface", "127.0.0.1", "Listening interface")
 		port         = flag.Int("port", 8080, "Callback port")
+		domain       = flag.String("domain", "127.0.0.1", "Callback domain")
 		path         = flag.String("path", "/oauth/callback", "Callback path")
 		clientID     = flag.String("id", "", "Client ID")
 		clientSecret = flag.String("secret", "", "Client secret")
@@ -48,7 +50,7 @@ func main() {
 		ClientID:     *clientID,
 		ClientSecret: *clientSecret,
 		Scopes:       scopes,
-		RedirectURL:  fmt.Sprintf("http://127.0.0.1:%d%s", *port, *path),
+		RedirectURL:  fmt.Sprintf("http://%s:%d%s", *domain, *port, *path),
 		Endpoint: oauth2.Endpoint{
 			AuthURL:  *authURL,
 			TokenURL: *tokenURL,
@@ -88,7 +90,7 @@ func main() {
 	})
 
 	server := http.Server{
-		Addr: fmt.Sprintf(":%d", *port),
+		Addr: fmt.Sprintf("%s:%d", *iface, *port),
 	}
 
 	go func() {
