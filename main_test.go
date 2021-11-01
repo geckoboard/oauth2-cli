@@ -177,11 +177,10 @@ Response: bad things happened
 		})
 	})
 
-	Describe("multiple scope arguments", func() {
+	Describe("space separated scope arguments", func() {
 		BeforeEach(func() {
 			args = []string{
-				"-scope", "public",
-				"-scope", "private",
+				"-scope", "public private",
 			}
 		})
 

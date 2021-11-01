@@ -9,63 +9,96 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"os"
 	"sync"
 
 	"golang.org/x/oauth2"
 )
 
-type Scopes []string
+const configDefaults = "/etc/oauth2-cli.json"
 
-func (s *Scopes) String() string {
-	return fmt.Sprintf("%s", *s)
+type config struct {
+	Interface    string `json:"interface"`
+	Port         int    `json:"port"`
+	Callback     string `json:"callback"`
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
+	AuthURL      string `json:"auth_url"`
+	TokenURL     string `json:"token_url"`
+	Scope        string `json:"scopes"`
 }
 
-func (s *Scopes) Set(value string) error {
-	*s = append(*s, value)
-	return nil
-}
+func loadConfig() config {
+	conf := config{
+		Interface: "127.0.0.1",
+		Port:      8081,
+		Callback:  "/oauth/callback",
+	}
 
-func randString() string {
-	buf := make([]byte, 32)
-	rand.Read(buf)
-	return base64.StdEncoding.EncodeToString(buf)
+	defaultsFile, err := os.Open(configDefaults)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Fatalf("failed to open %q: %s\n", configDefaults, err)
+		}
+	} else {
+		if err := json.NewDecoder(defaultsFile).Decode(&conf); err != nil {
+			log.Fatalf("failed to parse %q: %s", configDefaults, err)
+		}
+	}
+
+	flag.StringVar(&conf.Interface, "interface", conf.Interface, "Listening interface")
+	flag.IntVar(&conf.Port, "port", conf.Port, "Listening port")
+	flag.StringVar(&conf.Callback, "callback", conf.Callback, "Callback URL")
+	flag.StringVar(&conf.ClientID, "id", conf.ClientID, "Client ID")
+	flag.StringVar(&conf.ClientSecret, "secret", conf.ClientSecret, "Client Secret")
+	flag.StringVar(&conf.AuthURL, "auth", conf.AuthURL, "Provider auth URL")
+	flag.StringVar(&conf.TokenURL, "token", conf.AuthURL, "Provider token URL")
+	flag.StringVar(&conf.Scope, "scope", conf.Scope, "oAuth scope to authorize")
+	flag.Parse()
+
+	required("auth", conf.AuthURL)
+	required("token", conf.TokenURL)
+	required("id", conf.ClientID)
+	required("secret", conf.ClientSecret)
+
+	return conf
 }
 
 func main() {
-	var (
-		iface        = flag.String("interface", "127.0.0.1", "Listening interface")
-		port         = flag.Int("port", 8080, "Callback port")
-		domain       = flag.String("domain", "127.0.0.1", "Callback domain")
-		path         = flag.String("path", "/oauth/callback", "Callback path")
-		clientID     = flag.String("id", "", "Client ID")
-		clientSecret = flag.String("secret", "", "Client secret")
-		authURL      = flag.String("auth", "https://localhost/oauth/authorize", "Authorization URL")
-		tokenURL     = flag.String("token", "https://localhost/oauth/token", "Token URL")
-		scopes       Scopes
-	)
-	flag.Var(&scopes, "scope", "oAuth scopes to authorize (can be specified multiple times")
-	flag.Parse()
+	conf := loadConfig()
+
+	callbackURL, err := url.Parse(conf.Callback)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	if callbackURL.Scheme == "" {
+		callbackURL.Scheme = "http"
+	}
+	if callbackURL.Host == "" {
+		callbackURL.Host = fmt.Sprintf("%s:%d", conf.Interface, conf.Port)
+	}
 
 	config := &oauth2.Config{
-		ClientID:     *clientID,
-		ClientSecret: *clientSecret,
-		Scopes:       scopes,
-		RedirectURL:  fmt.Sprintf("http://%s:%d%s", *domain, *port, *path),
+		ClientID:     conf.ClientID,
+		ClientSecret: conf.ClientSecret,
+		Scopes:       []string{conf.Scope},
+		RedirectURL:  callbackURL.String(),
 		Endpoint: oauth2.Endpoint{
-			AuthURL:  *authURL,
-			TokenURL: *tokenURL,
+			AuthURL:  conf.AuthURL,
+			TokenURL: conf.TokenURL,
 		},
 	}
 
 	state := randString()
-	url := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
-	fmt.Printf("Visit this URL in your browser:\n\n%s\n\n", url)
+	visitURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	fmt.Printf("Visit this URL in your browser:\n\n%s\n\n", visitURL)
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	http.HandleFunc(*path, func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc(callbackURL.Path, func(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
 
 		if s := r.URL.Query().Get("state"); s != state {
@@ -90,7 +123,7 @@ func main() {
 	})
 
 	server := http.Server{
-		Addr: fmt.Sprintf("%s:%d", *iface, *port),
+		Addr: fmt.Sprintf("%s:%d", conf.Interface, conf.Port),
 	}
 
 	go func() {
@@ -102,5 +135,17 @@ func main() {
 	wg.Wait()
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalln(err)
+	}
+}
+
+func randString() string {
+	buf := make([]byte, 32)
+	rand.Read(buf)
+	return base64.StdEncoding.EncodeToString(buf)
+}
+
+func required(flag string, value string) {
+	if value == "" {
+		log.Fatalf("-%s is a required flag\n", flag)
 	}
 }
