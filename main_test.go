@@ -65,9 +65,9 @@ var _ = Describe("Main", func() {
 		var authURLRaw string
 		re := regexp.MustCompile(regexp.QuoteMeta(authURLBase) + `.+`)
 		Eventually(func() bool {
-			authURLRaw = string(re.Find(session.Out.Contents()))
+			authURLRaw = string(re.Find(session.Err.Contents()))
 			return authURLRaw != ""
-		}).Should(BeTrue(), "couldn't find auth URL in STDOUT")
+		}).Should(BeTrue(), "couldn't find auth URL in STDERR")
 
 		authURL, err = url.Parse(authURLRaw)
 		Expect(err).ToNot(HaveOccurred())

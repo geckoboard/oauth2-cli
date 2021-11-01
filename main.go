@@ -27,6 +27,7 @@ type config struct {
 	AuthURL      string `json:"auth_url"`
 	TokenURL     string `json:"token_url"`
 	Scope        string `json:"scopes"`
+	Verbose      bool   `json:"verbose"`
 }
 
 func loadConfig() config {
@@ -55,6 +56,7 @@ func loadConfig() config {
 	flag.StringVar(&conf.AuthURL, "auth", conf.AuthURL, "Provider auth URL")
 	flag.StringVar(&conf.TokenURL, "token", conf.AuthURL, "Provider token URL")
 	flag.StringVar(&conf.Scope, "scope", conf.Scope, "oAuth scope to authorize")
+	flag.BoolVar(&conf.Verbose, "verbose", conf.Verbose, "enable verbose logging")
 	flag.Parse()
 
 	required("auth", conf.AuthURL)
@@ -92,7 +94,7 @@ func main() {
 
 	state := randString()
 	visitURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
-	fmt.Printf("Visit this URL in your browser:\n\n%s\n\n", visitURL)
+	log.Printf("Visit this URL in your browser:\n%s\n\n", visitURL)
 
 	ctx := context.Background()
 	var wg sync.WaitGroup
@@ -100,6 +102,11 @@ func main() {
 
 	http.HandleFunc(callbackURL.Path, func(w http.ResponseWriter, r *http.Request) {
 		defer wg.Done()
+
+		if conf.Verbose {
+			log.Printf("Got callback: %s\n", r.URL.RequestURI())
+			http.DefaultTransport = loggingTransport{Transport: http.DefaultTransport}
+		}
 
 		if s := r.URL.Query().Get("state"); s != state {
 			http.Error(w, fmt.Sprintf("Invalid state: %s", s), http.StatusUnauthorized)
@@ -118,6 +125,8 @@ func main() {
 			http.Error(w, fmt.Sprintf("Token parse error: %s", err), http.StatusServiceUnavailable)
 			return
 		}
+
+		log.Printf("result:\n%s\n", tokenJSON)
 
 		w.Write(tokenJSON)
 	})

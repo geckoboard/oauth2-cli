@@ -15,7 +15,7 @@ but don't want to host the application on the web.
 
 Install:
 
-    go install github.com/geckoboard/oauth2-cli@latest
+    go install github.com/geckoboard/oauth2-cli@master
 
 Create an API application in the service of your choosing and set the
 callback URL to as follows:
