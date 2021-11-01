@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -20,7 +21,11 @@ func (l loggingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	r.Body = ioutil.NopCloser(bytes.NewReader(reqBody))
 
 	start := time.Now()
-	log.Printf("request: %s %s\nbody:\n%s\n", r.Method, r.URL, string(reqBody))
+	headers := ""
+	for k, v := range r.Header {
+		headers += fmt.Sprintf("%s: %v\n", k, v)
+	}
+	log.Printf("request: %s %s\n%sbody:\n%s\n", r.Method, r.URL, headers, string(reqBody))
 
 	res, err := l.Transport.RoundTrip(r)
 	duration := time.Since(start)
