@@ -148,10 +148,16 @@ var _ = Describe("Main", func() {
 		)
 
 		BeforeEach(func() {
-			server.AppendHandlers(ghttp.CombineHandlers(
-				ghttp.VerifyRequest("POST", "/oauth/token"),
-				ghttp.RespondWith(http.StatusBadRequest, expectedResponse),
-			))
+			server.AppendHandlers(
+				// Add two handlers because the oauth lib will retry with different client auth
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/oauth/token"),
+					ghttp.RespondWith(http.StatusBadRequest, expectedResponse),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/oauth/token"),
+					ghttp.RespondWith(http.StatusBadRequest, expectedResponse),
+				))
 		})
 
 		It("should output error", func() {
