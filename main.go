@@ -26,6 +26,7 @@ type config struct {
 	ClientSecret string `json:"client_secret"`
 	AuthURL      string `json:"auth_url"`
 	TokenURL     string `json:"token_url"`
+	CodeParam    string `json:"code_param"`
 	Scope        string `json:"scopes"`
 	Verbose      bool   `json:"verbose"`
 }
@@ -35,6 +36,7 @@ func loadConfig() config {
 		Interface: "127.0.0.1",
 		Port:      8081,
 		Callback:  "/oauth/callback",
+		CodeParam: "code",
 	}
 
 	defaultsFile, err := os.Open(configDefaults)
@@ -55,6 +57,7 @@ func loadConfig() config {
 	flag.StringVar(&conf.ClientSecret, "secret", conf.ClientSecret, "Client Secret")
 	flag.StringVar(&conf.AuthURL, "auth", conf.AuthURL, "Provider auth URL")
 	flag.StringVar(&conf.TokenURL, "token", conf.AuthURL, "Provider token URL")
+	flag.StringVar(&conf.CodeParam, "code", conf.CodeParam, "Query param to read code from")
 	flag.StringVar(&conf.Scope, "scope", conf.Scope, "oAuth scope to authorize")
 	flag.BoolVar(&conf.Verbose, "verbose", conf.Verbose, "enable verbose logging")
 	flag.Parse()
@@ -108,12 +111,14 @@ func main() {
 			http.DefaultTransport = loggingTransport{Transport: http.DefaultTransport}
 		}
 
-		if s := r.URL.Query().Get("state"); s != state {
+		query := r.URL.Query()
+
+		if s := query.Get("state"); s != state {
 			http.Error(w, fmt.Sprintf("Invalid state: %s", s), http.StatusUnauthorized)
 			return
 		}
 
-		code := r.URL.Query().Get("code")
+		code := query.Get(conf.CodeParam)
 		token, err := config.Exchange(ctx, code)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Exchange error: %s", err), http.StatusServiceUnavailable)
