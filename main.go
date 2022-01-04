@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 
 	"golang.org/x/oauth2"
@@ -28,6 +29,7 @@ type config struct {
 	TokenURL     string `json:"token_url"`
 	CodeParam    string `json:"code_param"`
 	Scope        string `json:"scopes"`
+	OIDCNonce    bool   `json:"nonce"`
 	Verbose      bool   `json:"verbose"`
 }
 
@@ -59,6 +61,7 @@ func loadConfig() config {
 	flag.StringVar(&conf.TokenURL, "token", conf.AuthURL, "Provider token URL")
 	flag.StringVar(&conf.CodeParam, "code", conf.CodeParam, "Query param to read code from")
 	flag.StringVar(&conf.Scope, "scope", conf.Scope, "oAuth scope to authorize")
+	flag.BoolVar(&conf.OIDCNonce, "oidc-nonce", conf.OIDCNonce, "include and then validate the OIDC nonce param")
 	flag.BoolVar(&conf.Verbose, "verbose", conf.Verbose, "enable verbose logging")
 	flag.Parse()
 
@@ -95,8 +98,15 @@ func main() {
 		},
 	}
 
+	var nonce string
+	opts := []oauth2.AuthCodeOption{oauth2.AccessTypeOffline}
+	if conf.OIDCNonce {
+		nonce = randString()
+		opts = append(opts, oauth2.SetAuthURLParam("nonce", nonce))
+	}
+
 	state := randString()
-	visitURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	visitURL := config.AuthCodeURL(state, opts...)
 	log.Printf("Visit this URL in your browser:\n%s\n\n", visitURL)
 
 	ctx := context.Background()
@@ -125,6 +135,13 @@ func main() {
 			return
 		}
 
+		if nonce != "" {
+			if err := checkNonce(nonce, token); err != nil {
+				http.Error(w, fmt.Sprintf("OIDC nonce error: %s", err), http.StatusUnauthorized)
+				return
+			}
+		}
+
 		tokenJSON, err := json.MarshalIndent(token, "", "  ")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("Token parse error: %s", err), http.StatusServiceUnavailable)
@@ -133,7 +150,7 @@ func main() {
 
 		log.Printf("result:\n%s\n", tokenJSON)
 
-		w.Write(tokenJSON)
+		_, _ = w.Write(tokenJSON)
 	})
 
 	server := http.Server{
@@ -150,6 +167,29 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Fatalln(err)
 	}
+}
+
+func checkNonce(nonce string, token *oauth2.Token) error {
+	idToken, ok := token.Extra("id_token").(string)
+	if !ok {
+		return fmt.Errorf("missing OIDC id_token")
+	}
+	splitToken := strings.SplitN(idToken, ".", 3)
+	log.Printf("%q", splitToken[1])
+	payload, err := base64.RawURLEncoding.DecodeString(splitToken[1])
+	if err != nil {
+		return fmt.Errorf("id_token payload decode: %w", err)
+	}
+	var decodeToken struct {
+		Nonce string
+	}
+	if err := json.Unmarshal(payload, &decodeToken); err != nil {
+		return fmt.Errorf("id_token payload decode: %w", err)
+	}
+	if decodeToken.Nonce != nonce {
+		return fmt.Errorf("%q != %q", decodeToken.Nonce, nonce)
+	}
+	return nil
 }
 
 func randString() string {
